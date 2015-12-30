@@ -1,0 +1,237 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2012 - 2015 YCSB contributors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# permissions and limitations under the License. See accompanying
+# LICENSE file.
+#
+
+import argparse
+import fnmatch
+import io
+import os
+import shlex
+import sys
+import subprocess
+
+BASE_URL = "https://github.com/brianfrankcooper/YCSB/tree/master/"
+COMMANDS = {
+    "shell" : {
+        "command"     : "",
+        "description" : "Interactive mode",
+        "main"        : "com.yahoo.ycsb.CommandLine",
+    },
+    "load" : {
+        "command"     : "-load",
+        "description" : "Execute the load phase",
+        "main"        : "com.yahoo.ycsb.Client",
+    },
+    "run" : {
+        "command"     : "-t",
+        "description" : "Execute the transaction phase",
+        "main"        : "com.yahoo.ycsb.Client",
+    },
+}
+
+DATABASES = {
+    "accumulo"     : "com.yahoo.ycsb.db.AccumuloClient",
+    "aerospike"    : "com.yahoo.ycsb.db.AerospikeClient",
+    "basic"        : "com.yahoo.ycsb.BasicDB",
+    "cassandra-7"  : "com.yahoo.ycsb.db.CassandraClient7",
+    "cassandra-8"  : "com.yahoo.ycsb.db.CassandraClient8",
+    "cassandra-10" : "com.yahoo.ycsb.db.CassandraClient10",
+    "cassandra-cql": "com.yahoo.ycsb.db.CassandraCQLClient",
+    "couchbase"    : "com.yahoo.ycsb.db.CouchbaseClient",
+    "dynamodb"     : "com.yahoo.ycsb.db.DynamoDBClient",
+    "elasticsearch": "com.yahoo.ycsb.db.ElasticSearchClient",
+    "gemfire"      : "com.yahoo.ycsb.db.GemFireClient",
+    "hbase"        : "com.yahoo.ycsb.db.HBaseClient",
+    "hbase-10"     : "com.yahoo.ycsb.db.HBaseClient10",
+    "hypertable"   : "com.yahoo.ycsb.db.HypertableClient",
+    "infinispan-cs": "com.yahoo.ycsb.db.InfinispanRemoteClient",
+    "infinispan"   : "com.yahoo.ycsb.db.InfinispanClient",
+    "jdbc"         : "com.yahoo.ycsb.db.JdbcDBClient",
+    "mapkeeper"    : "com.yahoo.ycsb.db.MapKeeperClient",
+    "mongodb"      : "com.yahoo.ycsb.db.MongoDbClient",
+    "mongodb-async": "com.yahoo.ycsb.db.AsyncMongoDbClient",
+    "nosqldb"      : "com.yahoo.ycsb.db.NoSqlDbClient",
+    "orientdb"     : "com.yahoo.ycsb.db.OrientDBClient",
+    "redis"        : "com.yahoo.ycsb.db.RedisClient",
+    "tarantool"    : "com.yahoo.ycsb.db.TarantoolClient",
+    "voldemort"    : "com.yahoo.ycsb.db.VoldemortClient"
+}
+
+OPTIONS = {
+    "-P file"        : "Specify workload file",
+    "-p key=value"   : "Override workload property",
+    "-s"             : "Print status to stderr",
+    "-target n"      : "Target ops/sec (default: unthrottled)",
+    "-threads n"     : "Number of client threads (default: 1)",
+    "-cp path"       : "Additional Java classpath entries",
+    "-jvm-args args" : "Additional arguments to the JVM",
+}
+
+def usage():
+    output = io.BytesIO()
+    print >> output, "%s command database [options]" % sys.argv[0]
+
+    print >> output, "\nCommands:"
+    for command in sorted(COMMANDS.keys()):
+        print >> output, "    %s %s" % (command.ljust(14),
+                                        COMMANDS[command]["description"])
+
+    print >> output, "\nDatabases:"
+    for db in sorted(DATABASES.keys()):
+        print >> output, "    %s %s" % (db.ljust(14), BASE_URL +
+                                        db.split("-")[0])
+
+    print >> output, "\nOptions:"
+    for option in sorted(OPTIONS.keys()):
+        print >> output, "    %s %s" % (option.ljust(14), OPTIONS[option])
+
+    print >> output, """\nWorkload Files:
+    There are various predefined workloads under workloads/ directory.
+    See https://github.com/brianfrankcooper/YCSB/wiki/Core-Properties
+    for the list of workload properties."""
+
+    return output.getvalue()
+
+def debug(message):
+    print >> sys.stderr, "[DEBUG] ", message
+
+def warn(message):
+    print >> sys.stderr, "[WARN] ", message
+
+def error(message):
+    print >> sys.stderr, "[ERROR] ", message
+
+def find_jars(dir, glob='*.jar'):
+    jars = []
+    for (dirpath, dirnames, filenames) in os.walk(dir):
+        for filename in fnmatch.filter(filenames, glob):
+            jars.append(os.path.join(dirpath, filename))
+    return jars
+
+
+def get_ycsb_home():
+    dir = os.path.abspath(os.path.dirname(sys.argv[0]))
+    while "LICENSE.txt" not in os.listdir(dir):
+        dir = os.path.join(dir, os.path.pardir)
+    return os.path.abspath(dir)
+
+def is_distribution():
+    # If there's a top level pom, we're a source checkout. otherwise a dist artifact
+    return "pom.xml" not in os.listdir(get_ycsb_home())
+
+# Run the maven dependency plugin to get the local jar paths.
+# presumes maven can run, so should only be run on source checkouts
+# will invoke the 'package' goal for the given binding in order to resolve intra-project deps
+# presumes maven properly handles system-specific path separators
+def get_classpath_from_maven(database):
+    try:
+        debug("Running 'mvn -pl com.yahoo.ycsb:"+database+"-binding -am package -DskipTests "
+              "dependency:build-classpath -DincludeScope=compile -Dmdep.outputFilterFile=true'")
+        mvn_output = subprocess.check_output(["mvn", "-pl", "com.yahoo.ycsb:"+database+"-binding",
+                                              "-am", "package", "-DskipTests",
+                                              "dependency:build-classpath",
+                                              "-DincludeScope=compile",
+                                              "-Dmdep.outputFilterFile=true"])
+        # the above outputs a "classpath=/path/tojar:/path/to/other/jar" for each module
+        # the last module will be the datastore binding
+        line = [x for x in mvn_output.splitlines() if x.startswith("classpath=")][-1:]
+        return line[0][len("classpath="):]
+    except subprocess.CalledProcessError, err:
+        error("Attempting to generate a classpath from Maven failed "
+              "with return code '" + str(err.returncode) + "'. The output from "
+              "Maven follows, try running "
+              "'mvn -DskipTests package dependency:build=classpath' on your "
+              "own and correct errors." + os.linesep + os.linesep + "mvn output:" + os.linesep
+              + err.output)
+        sys.exit(err.returncode)
+
+def main():
+    p = argparse.ArgumentParser(
+            usage=usage(),
+            formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('-cp', dest='classpath', help="""Additional classpath
+                   entries, e.g.  '-cp /tmp/hbase-1.0.1.1/conf'. Will be
+                   prepended to the YCSB classpath.""")
+    p.add_argument("-jvm-args", default=[], type=shlex.split,
+                   help="""Additional arguments to pass to 'java', e.g.
+                   '-Xmx4g'""")
+    p.add_argument("command", choices=sorted(COMMANDS),
+                   help="""Command to run.""")
+    p.add_argument("database", choices=sorted(DATABASES),
+                   help="""Database to test.""")
+    args, remaining = p.parse_known_args()
+    ycsb_home = get_ycsb_home()
+
+    # Use JAVA_HOME to find java binary if set, otherwise just use PATH.
+    java = "java"
+    java_home = os.getenv("JAVA_HOME")
+    if java_home:
+        java = os.path.join(java_home, "bin", "java")
+    db_classname = DATABASES[args.database]
+    command = COMMANDS[args.command]["command"]
+    main_classname = COMMANDS[args.command]["main"]
+
+    # Classpath set up
+    binding = args.database.split("-")[0]
+    if is_distribution():
+        db_dir = os.path.join(ycsb_home, binding + "-binding")
+        # include top-level conf for when we're a binding-specific artifact.
+        # If we add top-level conf to the general artifact, starting here
+        # will allow binding-specific conf to override (because it's prepended)
+        cp = [os.path.join(ycsb_home, "conf")]
+        cp.extend(find_jars(os.path.join(ycsb_home, "lib")))
+        cp.extend(find_jars(os.path.join(db_dir, "lib")))
+    else:
+        warn("Running against a source checkout. In order to get our runtime "
+             "dependencies we'll have to invoke Maven. Depending on the state "
+             "of your system, this may take ~30-45 seconds")
+        db_dir = os.path.join(ycsb_home, binding)
+        # goes first so we can rely on side-effect of package
+ #       maven_says = get_classpath_from_maven(binding)
+        # TODO when we have a version property, skip the glob
+#        cp = find_jars(os.path.join(db_dir, "target"),
+ #                      binding + "-binding*.jar")
+        # alredy in jar:jar:jar form
+       # cp.append(maven_says)
+	#cp.append("/root/slf4j-simple-1.6.2.jar")	
+#	cp.append("/root/YCSB/conf")
+#	cp.append("/root/YCSB/cassandra/target/dependency/cassandra-thrift-2.0.16-SNAPSHOT.jar")
+ 
+ #   cp.insert(0, os.path.join(db_dir, "conf"))
+    #this is to avoid getting dependencies from maven which overwrites our own jars which we modified
+    cp=['/root/CassandraYCSB/cassandra/conf:/root/CassandraYCSB/cassandra/target/cassandra-binding-0.4.0-SNAPSHOT.jar:/root/.m2/repository/org/mortbay/jetty/servlet-api/2.5-20081211/servlet-api-2.5-20081211.jar:/root/.m2/repository/com/datastax/cassandra/cassandra-driver-core/1.0.3/cassandra-driver-core-1.0.3.jar:/root/.m2/repository/io/netty/netty/3.5.9.Final/netty-3.5.9.Final.jar:/root/.m2/repository/org/antlr/antlr-runtime/3.2/antlr-runtime-3.2.jar:/root/.m2/repository/com/ning/compress-lzf/0.8.4/compress-lzf-0.8.4.jar:/root/.m2/repository/com/github/stephenc/high-scale-lib/high-scale-lib/1.1.2/high-scale-lib-1.1.2.jar:/root/.m2/repository/org/apache/cassandra/cassandra-thrift/1.2.9/cassandra-thrift-1.2.9.jar:/root/.m2/repository/org/apache/cassandra/cassandra-all/1.2.9/cassandra-all-1.2.9.jar:/root/.m2/repository/org/apache/cassandra/deps/avro/1.4.0-cassandra-1/avro-1.4.0-cassandra-1.jar:/root/.m2/repository/org/xerial/snappy/snappy-java/1.0.5/snappy-java-1.0.5.jar:/root/.m2/repository/com/googlecode/json-simple/json-simple/1.1/json-simple-1.1.jar:/root/.m2/repository/commons-logging/commons-logging/1.1.1/commons-logging-1.1.1.jar:/root/.m2/repository/org/antlr/antlr/3.2/antlr-3.2.jar:/root/.m2/repository/org/slf4j/slf4j-api/1.6.4/slf4j-api-1.6.4.jar:/root/CassandraYCSB/core/target/core-0.4.0-SNAPSHOT.jar:/root/.m2/repository/commons-lang/commons-lang/2.6/commons-lang-2.6.jar:/root/.m2/repository/javax/servlet/servlet-api/2.5/servlet-api-2.5.jar:/root/.m2/repository/commons-cli/commons-cli/1.1/commons-cli-1.1.jar:/root/.m2/repository/org/apache/thrift/libthrift/0.7.0/libthrift-0.7.0.jar:/root/.m2/repository/org/apache/httpcomponents/httpcore/4.0.1/httpcore-4.0.1.jar:/root/.m2/repository/jline/jline/1.0/jline-1.0.jar:/root/.m2/repository/org/mortbay/jetty/jetty-util/6.1.22/jetty-util-6.1.22.jar:/root/.m2/repository/edu/stanford/ppl/snaptree/0.1/snaptree-0.1.jar:/root/.m2/repository/org/antlr/stringtemplate/3.2/stringtemplate-3.2.jar:/root/.m2/repository/log4j/log4j/1.2.15/log4j-1.2.15.jar:/root/.m2/repository/commons-codec/commons-codec/1.2/commons-codec-1.2.jar:/root/.m2/repository/org/mindrot/jbcrypt/0.3m/jbcrypt-0.3m.jar:/root/.m2/repository/org/hdrhistogram/HdrHistogram/2.1.4/HdrHistogram-2.1.4.jar:/root/.m2/repository/org/apache/httpcomponents/httpclient/4.0.1/httpclient-4.0.1.jar:/root/.m2/repository/com/google/guava/guava/13.0.1/guava-13.0.1.jar:/root/.m2/repository/net/jpountz/lz4/lz4/1.1.0/lz4-1.1.0.jar:/root/.m2/repository/com/googlecode/concurrentlinkedhashmap/concurrentlinkedhashmap-lru/1.3/concurrentlinkedhashmap-lru-1.3.jar:/root/.m2/repository/com/github/stephenc/jamm/0.2.5/jamm-0.2.5.jar:/root/.m2/repository/antlr/antlr/2.7.7/antlr-2.7.7.jar:/root/.m2/repository/org/mortbay/jetty/jetty/6.1.22/jetty-6.1.22.jar:/root/.m2/repository/com/yammer/metrics/metrics-core/2.0.3/metrics-core-2.0.3.jar:/root/.m2/repository/org/codehaus/jackson/jackson-core-asl/1.9.2/jackson-core-asl-1.9.2.jar:/root/.m2/repository/org/codehaus/jackson/jackson-mapper-asl/1.9.2/jackson-mapper-asl-1.9.2.jar:/root/.m2/repository/org/yaml/snakeyaml/1.6/snakeyaml-1.6.jar:/root/slf4j-simple-1.6.2.jar:/root/YCSB/conf:/root/YCSB/cassandra/target/dependency/cassandra-thrift-2.0.16-SNAPSHOT.jar']
+    #cp= ['/root/CassandraYCSB/YCSB/cassandra/conf', '/root/CassandraYCSB/YCSB/cassandra/target/cassandra-binding-0.4.0-SNAPSHOT.jar','/root/slf4j-simple-1.6.2.jar', '/root/YCSB/conf', '/root/YCSB/cassandra/target/dependency/cassandra-thrift.jar', '/root/CassandraYCSB/YCSB/cassandra/target/dependency/*.jar','/root/CassandraYCSB/YCSB/core/target/core-0.4.0-SNAPSHOT.jar']
+    #cp=['/root/CassandraYCSB/YCSB/cassandra/conf', '/root/CassandraYCSB/YCSB/cassandra/target/cassandra-binding-0.4.0-SNAPSHOT.jar', '/root/.m2/repository/org/mortbay/jetty/servlet-api/2.5-20081211/servlet-api-2.5-20081211.jar:/root/.m2/repository/com/datastax/cassandra/cassandra-driver-core/1.0.3/cassandra-driver-core-1.0.3.jar:/root/.m2/repository/io/netty/netty/3.5.9.Final/netty-3.5.9.Final.jar:/root/.m2/repository/org/antlr/antlr-runtime/3.2/antlr-runtime-3.2.jar:/root/.m2/repository/com/ning/compress-lzf/0.8.4/compress-lzf-0.8.4.jar:/root/.m2/repository/com/github/stephenc/high-scale-lib/high-scale-lib/1.1.2/high-scale-lib-1.1.2.jar:/root/.m2/repository/log4j/log4j/1.2.16/log4j-1.2.16.jar:/root/.m2/repository/org/apache/cassandra/cassandra-thrift/1.2.9/cassandra-thrift-1.2.9.jar:/root/.m2/repository/org/apache/cassandra/cassandra-all/1.2.9/cassandra-all-1.2.9.jar:/root/.m2/repository/org/apache/cassandra/deps/avro/1.4.0-cassandra-1/avro-1.4.0-cassandra-1.jar:/root/.m2/repository/org/xerial/snappy/snappy-java/1.0.5/snappy-java-1.0.5.jar:/root/.m2/repository/com/googlecode/json-simple/json-simple/1.1/json-simple-1.1.jar:/root/.m2/repository/commons-logging/commons-logging/1.1.1/commons-logging-1.1.1.jar:/root/.m2/repository/org/antlr/antlr/3.2/antlr-3.2.jar:/root/.m2/repository/org/slf4j/slf4j-api/1.6.4/slf4j-api-1.6.4.jar:/root/CassandraYCSB/YCSB/core/target/core-0.4.0-SNAPSHOT.jar:/root/.m2/repository/commons-lang/commons-lang/2.6/commons-lang-2.6.jar:/root/.m2/repository/javax/servlet/servlet-api/2.5/servlet-api-2.5.jar:/root/.m2/repository/commons-cli/commons-cli/1.1/commons-cli-1.1.jar:/root/.m2/repository/org/apache/thrift/libthrift/0.7.0/libthrift-0.7.0.jar:/root/.m2/repository/org/apache/httpcomponents/httpcore/4.0.1/httpcore-4.0.1.jar:/root/.m2/repository/jline/jline/1.0/jline-1.0.jar:/root/.m2/repository/org/mortbay/jetty/jetty-util/6.1.22/jetty-util-6.1.22.jar:/root/.m2/repository/edu/stanford/ppl/snaptree/0.1/snaptree-0.1.jar:/root/.m2/repository/org/antlr/stringtemplate/3.2/stringtemplate-3.2.jar:/root/.m2/repository/commons-codec/commons-codec/1.2/commons-codec-1.2.jar:/root/.m2/repository/org/mindrot/jbcrypt/0.3m/jbcrypt-0.3m.jar:/root/.m2/repository/org/hdrhistogram/HdrHistogram/2.1.4/HdrHistogram-2.1.4.jar:/root/.m2/repository/org/apache/httpcomponents/httpclient/4.0.1/httpclient-4.0.1.jar:/root/.m2/repository/com/google/guava/guava/13.0.1/guava-13.0.1.jar:/root/.m2/repository/net/jpountz/lz4/lz4/1.1.0/lz4-1.1.0.jar:/root/.m2/repository/com/googlecode/concurrentlinkedhashmap/concurrentlinkedhashmap-lru/1.3/concurrentlinkedhashmap-lru-1.3.jar:/root/.m2/repository/com/github/stephenc/jamm/0.2.5/jamm-0.2.5.jar:/root/.m2/repository/antlr/antlr/2.7.7/antlr-2.7.7.jar:/root/.m2/repository/org/mortbay/jetty/jetty/6.1.22/jetty-6.1.22.jar:/root/.m2/repository/com/yammer/metrics/metrics-core/2.0.3/metrics-core-2.0.3.jar:/root/.m2/repository/org/codehaus/jackson/jackson-core-asl/1.9.2/jackson-core-asl-1.9.2.jar:/root/.m2/repository/org/codehaus/jackson/jackson-mapper-asl/1.9.2/jackson-mapper-asl-1.9.2.jar:/root/.m2/repository/org/yaml/snakeyaml/1.6/snakeyaml-1.6.jar', '/root/slf4j-simple-1.6.2.jar', '/root/YCSB/conf'] 
+    classpath = os.pathsep.join(cp)
+    if args.classpath:
+        classpath = os.pathsep.join([args.classpath, classpath])
+   # if database=="cassandra-cql":
+    #	classpath_additional= ["home/root/YCSB/bin/target/guava-13.0.1.jar"]
+
+ #   debug("Size of cp is " + str(len(classpath)))
+ #   debug(cp)
+    ycsb_command = ([java] + args.jvm_args +
+                    ["-cp", classpath,
+                     main_classname, "-db", db_classname] + remaining)
+    if command:
+        ycsb_command.append(command)
+    print >> sys.stderr, " ".join(ycsb_command)
+    return subprocess.call(ycsb_command)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

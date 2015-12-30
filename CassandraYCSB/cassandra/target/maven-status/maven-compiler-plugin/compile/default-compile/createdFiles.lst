@@ -1,0 +1,5 @@
+com/yahoo/ycsb/db/CassandraClient8.class
+com/yahoo/ycsb/db/CassandraClient10.class
+com/yahoo/ycsb/db/CassandraCQLClient.class
+com/yahoo/ycsb/db/Profiling.class
+com/yahoo/ycsb/db/CassandraClient7.class

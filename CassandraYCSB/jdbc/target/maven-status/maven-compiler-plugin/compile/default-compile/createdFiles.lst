@@ -1,0 +1,6 @@
+com/yahoo/ycsb/db/JdbcDBCli.class
+com/yahoo/ycsb/db/JdbcDBClient$StatementType.class
+com/yahoo/ycsb/db/JdbcDBClient.class
+com/yahoo/ycsb/db/JdbcDBClient$StatementType$Type.class
+com/yahoo/ycsb/db/JdbcDBClientConstants.class
+com/yahoo/ycsb/db/JdbcDBCreateTable.class

@@ -1,0 +1,3 @@
+/root/CassandraYCSB/core/src/test/java/com/yahoo/ycsb/TestByteIterator.java
+/root/CassandraYCSB/core/src/test/java/com/yahoo/ycsb/measurements/exporter/TestMeasurementsExporter.java
+/root/CassandraYCSB/core/src/test/java/com/yahoo/ycsb/generator/TestZipfianGenerator.java

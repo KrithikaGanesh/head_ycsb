@@ -1,0 +1,40 @@
+  773  mvn -pl com.yahoo.ycsb:cassandra-binding -am clean package
+  776  mvn -pl com.yahoo.ycsb:cassandra-binding -am clean package
+  778  vim setup_ycsb.cql
+  780  ./bin/cassandra-cli -h 10.10.1.69 -f ~/setup_ycsb.cql 
+  783  ./bin/ycsb load cassandra-10 -p hosts="10.10.1.69" -P workloads/workloada -s > workloada_load_res
+  817  python2.7 ./bin/ycsb load cassandra-10 -p hosts="10.10.1.69" -P workloads/workloada -s > workloada_load_res
+  818  python2.7 ./bin/ycsb run cassandra-10 -threads 10 -p hosts="10.10.1.69" -P workloads/workloada -s  > workloada_run_res
+  821  python2.7 ./bin/ycsb run cassandra-10 -threads 10 -p hosts="192.168.122.89" -P workloads/workloada -s  > workloada_run_res1
+  823  python2.7 ./bin/ycsb run cassandra-10 -threads 10 -p hosts="10.10.1.69" -P workloads/workloada -s  > workloada_run_res1
+  824  ./bin/ycsb run cassandra-10 -threads 10 -p hosts="10.10.1.69" -P workloads/workloada -s  > workloada_run_res1
+  825  python2.7 ./bin/ycsb run cassandra-10 -threads 10 -p hosts="10.10.1.69" -P workloads/workloada -s  > workloada_run_res1
+  826  python2.7 ./bin/ycsb load cassandra-10 -p hosts="10.10.1.69" -P workloads/workloada -s > workloada_load_res.txt
+  829  python2.7 ./bin/ycsb run cassandra-10 -threads 10 -p hosts="10.10.1.69" -P workloads/workloada -s  > workloada_run_res1
+  834  python2.7 ./bin/ycsb run cassandra-10 -threads 10 -p hosts="10.10.1.69" -P workloads/workloada -s  > workloada_run_res
+  835  python2.7 ./bin/ycsb run cassandra-10 -threads 10 -p host="10.10.1.69" -P workloads/workloada -s  > workloada_run_res
+  836  python2.7 ./bin/ycsb run cassandra-10 -threads 10 -p hosts="10.10.1.69" -P workloads/workloada -s  > workloada_run_res
+  845  cd src/main/java/com/yahoo/ycsb/db/
+  859  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads 128 -p fieldcount=20 -p operationcount=900000 -p recordcount=15000000 -p requestdistribution=zipfian -P workloads/workloada -s  > workloada_run_res
+  864  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads 128 -p fieldcount=20 -p operationcount=900000 -p recordcount=15000000 -p requestdistribution=zipfian -P workloads/workloada -s  > workloada_run_res
+  866  cd cassandra/src/main/java/com/yahoo/ycsb/db/
+  885  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads 128 -p fieldcount=20 -p operationcount=900000 -p recordcount=15000000 -p requestdistribution=zipfian -P workloads/workloada -s  > workloada_run_res
+  887  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads 128 -p fieldcount=20 -p operationcount=900000 -p recordcount=15000000 -p requestdistribution=zipfian -P workloads/workloada -s  > workloada_run_res
+  895  cd src/main/java/com/yahoo/ycsb/db/
+  902  cd cassandra/src/main/java/com/yahoo/ycsb/db/
+  906  mvn -pl com.yahoo.ycsb:cassandra-binding -am clean package
+  908  mvn -pl com.yahoo.ycsb:cassandra-binding -am clean package
+  909  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads 128 -p fieldcount=20 -p operationcount=900000 -p recordcount=15000000 -p requestdistribution=zipfian -P workloads/workloada -s  > workloada_run_res
+  911  cd core/src/main/java/com/yahoo/ycsb/
+  917  vim ./src/main/java/com/yahoo/ycsb/db/CassandraClient10.java 
+  968  vim ./bin/ycsb 
+ 1004  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads10 -p fieldcount=20 -p operationcount=10 -p recordcount=10 requestdistribution-sipfian -P workloads/workloada -s > try
+ 1008  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads10 -p fieldcount=20 -p operationcount=10 -p recordcount=10 requestdistribution-sipfian -P workloads/workloada -s > try
+ 1011  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads=10 -p fieldcount=20 -p operationcount=10 -p recordcount=10 requestdistribution-sipfian -P workloads/workloada -s > try
+ 1014  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -threads 10 -p fieldcount=20 -p operationcount=10 -p recordcount=10 requestdistribution-sipfian -P workloads/workloada -s > try
+ 1016  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -p fieldcount=20 -p operationcount=10 -p recordcount=10 requestdistribution-sipfian -P workloads/workloada -s > try
+ 1018  python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -p fieldcount=20 -p operationcount=10 -p recordcount=10 -P workloads/workloada -s > try
+ 1020  echo "python2.7 ./bin/ycsb run cassandra-10 -p hosts="10.10.1.69" -p fieldcount=20 -p operationcount=10 -p recordcount=10 -P workloads/workloada -s > try" > smallycsbclient.sh
+ 1039  sh smallycsbclient.sh 
+ 1040  cat smallycsbclient.sh 
+ 1041  history | grep ycsb > hist

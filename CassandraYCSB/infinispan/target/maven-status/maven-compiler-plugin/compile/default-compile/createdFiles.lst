@@ -1,0 +1,4 @@
+com/yahoo/ycsb/db/InfinispanClient.class
+com/yahoo/ycsb/db/InfinispanRemoteClient.class
+com/yahoo/ycsb/db/RemoteCacheManagerHolder.class
+com/yahoo/ycsb/db/Status.class
